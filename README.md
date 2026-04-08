@@ -1,12 +1,12 @@
-# AWS Serverless CRUD API with Lambda, DynamoDB, and API Gateway
+# Azure Serverless CRUD API with Azure Functions, Cosmos DB, and Blob Storage
 
 This project delivers a fully automated **serverless CRUD (Create, Read, Update,
-Delete) API** on AWS, built using **Amazon API Gateway**, **AWS Lambda**, and
-**Amazon DynamoDB**.
+Delete) API** on Azure, built using **Azure Functions**, **Azure Cosmos DB**, and
+**Azure Blob Storage**.
 
-It uses **Terraform** and **Python (boto3)** to provision and deploy a
+It uses **Terraform** and **Python (azure-cosmos)** to provision and deploy a
 **stateless, REST-style backend** that exposes HTTP endpoints for managing simple
-“notes” data — all without running or managing any EC2 instances.
+"notes" data — all without running or managing any virtual machines.
 
 For testing and demonstration purposes, a lightweight **HTML web frontend**
 interacts directly with the deployed API, allowing users to create, view, update,
@@ -14,57 +14,53 @@ and delete notes from a browser.
 
 ![webapp](webapp.png)
 
-This design follows a **serverless microservice architecture** where API Gateway
-routes requests to dedicated Lambda functions, DynamoDB provides fully managed
-persistence, and AWS handles scaling, availability, and fault tolerance
-automatically.
+This design follows a **serverless microservice architecture** where Azure
+Functions handle HTTP routing and business logic, Cosmos DB provides fully
+managed NoSQL persistence, and Blob Storage hosts the static frontend.
 
-![diagram](aws-crud-example.png)
+![diagram](azure-crud-example.png)
 
 Key capabilities demonstrated:
 
-1. **Serverless CRUD API** – Implements REST-style endpoints backed by Lambda
-   functions for creating, retrieving, listing, updating, and deleting records.
-2. **Stateless Compute Layer** – Each Lambda function is independent and
-   stateless, enabling horizontal scaling and zero idle cost.
-3. **Managed NoSQL Storage** – Uses DynamoDB with on-demand capacity for
-   low-latency, fully managed data persistence.
-4. **Infrastructure as Code (IaC)** – Terraform provisions API Gateway routes,
-   Lambda functions, IAM roles, DynamoDB tables, and supporting resources in a
-   repeatable, auditable way.
-5. **Browser-Based Test Client** – A simple static HTML frontend demonstrates
+1. **Serverless CRUD API** — Implements REST-style endpoints using the Azure
+   Functions Python v2 programming model for creating, retrieving, listing,
+   updating, and deleting records.
+2. **Stateless Compute Layer** — All five operations are handled by a single
+   Function App on a consumption plan — zero idle cost, scales on demand.
+3. **Managed NoSQL Storage** — Uses Cosmos DB (SQL API) with a provisioned
+   throughput container, partition key `/owner`, and UUID-based item IDs.
+4. **Infrastructure as Code (IaC)** — Terraform provisions the Function App,
+   Cosmos DB account, Blob Storage static site, and all supporting resources
+   in a repeatable, auditable way.
+5. **Browser-Based Test Client** — A simple static HTML frontend demonstrates
    real-time interaction with the API without requiring additional tooling.
 
-Together, these components form a **clean, minimal reference architecture** for
-building serverless APIs on AWS — suitable for learning, prototyping, or extending
-into more advanced event-driven and authenticated microservices.
+---
 
-## API Gateway Endpoints
+## API Endpoints
 
-The **Notes API** exposes REST-style CRUD endpoints through **Amazon API Gateway
-(HTTP API)**. These endpoints allow clients to create, list, retrieve, update,
-and delete notes stored in DynamoDB. All endpoints return JSON and work with
-both CLI and browser-based clients.
+The **Notes API** exposes REST-style CRUD endpoints through **Azure Functions
+HTTP triggers**. All endpoints return JSON and accept both CLI and browser-based
+clients.
 
 > Note: In this simplified demo, the note `owner` is hardcoded to `"global"` in
-> the Lambda handlers.
+> the function code.
 
-### API Endpoint Summary
+### Endpoint Summary
 
-| Method | Path | Purpose | Input | DynamoDB Operation |
-|------|------|--------|------|--------------------|
-| POST | `/notes` | Create a new note | JSON body (`title`, `note`) | `PutItem` |
-| GET | `/notes` | List all notes | None | `Query` (owner = "global") |
-| GET | `/notes/{id}` | Retrieve a single note by ID | Path param (`id`) | `GetItem` |
-| PUT | `/notes/{id}` | Update an existing note | Path param + JSON body | `UpdateItem` |
-| DELETE | `/notes/{id}` | Delete a note by ID | Path param (`id`) | `DeleteItem` |
-
+| Method | Path | Purpose | Input | Cosmos DB Operation |
+|---|---|---|---|---|
+| POST | `/api/notes` | Create a new note | JSON body (`title`, `note`) | `create_item` |
+| GET | `/api/notes` | List all notes | None | `query_items` (owner = "global") |
+| GET | `/api/notes/{id}` | Retrieve a single note | Path param (`id`) | `read_item` |
+| PUT | `/api/notes/{id}` | Update an existing note | Path param + JSON body | `replace_item` |
+| DELETE | `/api/notes/{id}` | Delete a note | Path param (`id`) | `delete_item` |
 
 ### Request & Response Characteristics
 
 | Aspect | Behavior |
-|-----|--------|
-| Authentication | None (demo-only) |
+|---|---|
+| Authentication | None (demo-only, `AuthLevel.ANONYMOUS`) |
 | Content Type | `application/json` |
 | Owner Model | Hardcoded to `"global"` |
 | Response Format | JSON |
@@ -73,34 +69,14 @@ both CLI and browser-based clients.
 
 ---
 
-### POST /notes
+### POST /api/notes
 
-**Purpose:**  
-Creates a new note in DynamoDB.
-
-**Request Body (JSON):**
+**Request Body:**
 ```json
-{
-  "title": "Test Note 1",
-  "note": "This is test note 1"
-}
+{ "title": "Test Note 1", "note": "This is test note 1" }
 ```
 
-**Parameters:**
-
-| Field | Type | Required | Description |
-|------|------|----------|-------------|
-| title | string | Yes | Note title |
-| note | string | Yes | Note body/content |
-
-**Example Request:**
-```bash
-curl -s -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/notes \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Test Note 1","note":"This is test note 1"}'
-```
-
-**Example Response (201):**
+**Response (201):**
 ```json
 {
   "id": "2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21",
@@ -109,24 +85,22 @@ curl -s -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/notes \
 }
 ```
 
----
-
-### GET /notes
-
-**Purpose:**  
-Lists all notes for the demo owner (`"global"`).
-
-**Example Request:**
+**Example:**
 ```bash
-curl -s https://<api-id>.execute-api.us-east-1.amazonaws.com/notes
+curl -s -X POST https://<func-app>.azurewebsites.net/api/notes \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Test Note 1","note":"This is test note 1"}'
 ```
 
-**Example Response (200):**
+---
+
+### GET /api/notes
+
+**Response (200):**
 ```json
 {
   "items": [
     {
-      "owner": "global",
       "id": "2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21",
       "title": "Test Note 1",
       "note": "This is test note 1",
@@ -139,117 +113,135 @@ curl -s https://<api-id>.execute-api.us-east-1.amazonaws.com/notes
 
 ---
 
-### GET /notes/{id}
+### GET /api/notes/{id}
 
-**Purpose:**  
-Retrieves a single note by ID.
-
-**Example Request:**
 ```bash
-curl -s https://<api-id>.execute-api.us-east-1.amazonaws.com/notes/<id>
+curl -s https://<func-app>.azurewebsites.net/api/notes/<id>
 ```
 
 ---
 
-### PUT /notes/{id}
+### PUT /api/notes/{id}
 
-**Purpose:**  
-Updates an existing note.
-
-**Request Body (JSON):**
+**Request Body:**
 ```json
-{
-  "title": "Test Note 1",
-  "note": "Updated note"
-}
+{ "title": "Updated Title", "note": "Updated content" }
 ```
 
 ---
 
-### DELETE /notes/{id}
+### DELETE /api/notes/{id}
 
-**Purpose:**  
-Deletes a note by ID.
-
-**Example Request:**
 ```bash
-curl -s -X DELETE https://<api-id>.execute-api.us-east-1.amazonaws.com/notes/<id>
+curl -s -X DELETE https://<func-app>.azurewebsites.net/api/notes/<id>
 ```
+
+---
 
 ## Prerequisites
 
-* [An AWS Account](https://aws.amazon.com/console/)
-* [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+* [An Azure Account](https://portal.azure.com/)
+* [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
 * [Install Terraform](https://developer.hashicorp.com/terraform/install)
+* [Install jq](https://jqlang.github.io/jq/download/)
 
-If this is your first time following along, we recommend starting with this video:  
-**[AWS + Terraform: Easy Setup](https://www.youtube.com/watch?v=9clW3VQLyxA)** – it walks through configuring your AWS credentials, Terraform backend, and CLI environment.
+Log in to Azure before deploying:
+```bash
+az login
+```
 
 ## Download this Repository
 
 ```bash
-git clone https://github.com/mamonaco1973/aws-crud-example.git
-cd aws-crud-example
+git clone https://github.com/mamonaco1973/azure-crud-example.git
+cd azure-crud-example
 ```
 
 ## Build the Code
 
-Run [check_env](check_env.sh) to validate your environment, then run [apply](apply.sh) to provision the infrastructure.
+Run [check_env.sh](check_env.sh) to validate your environment, then run
+[apply.sh](apply.sh) to provision all infrastructure and deploy the function code.
 
 ```bash
-~/aws-crud-example$ ./apply.sh
-NOTE: Running environment validation...
-NOTE: Validating that required commands are found in your PATH.
-NOTE: aws is found in the current PATH.
-NOTE: terraform is found in the current PATH.
-NOTE: jq is found in the current PATH.
-NOTE: All required commands are available.
-NOTE: Checking AWS cli connection.
-NOTE: Successfully logged into AWS.
+~/azure-crud-example$ ./apply.sh
+NOTE: Found required command: az
+NOTE: Found required command: terraform
+NOTE: Found required command: jq
+NOTE: Azure CLI authentication successful.
+NOTE: Deploying functions and Cosmos DB...
 
 Initializing the backend...
 ```
+
+`apply.sh` performs the following steps in order:
+
+1. Runs `check_env.sh` to validate required CLI tools and Azure authentication
+2. Deploys `01-functions` — resource group, Cosmos DB account/database/container,
+   storage account, service plan, and Function App
+3. Packages and deploys the Python function code via `az functionapp deployment source config-zip`
+4. Substitutes the Function App URL into `02-webapp/index.html.tmpl`
+5. Deploys `02-webapp` — storage account with static website hosting, uploads `index.html`
+6. Runs `validate.sh` to exercise all five CRUD endpoints
+
+To tear down all resources:
+
+```bash
+./destroy.sh
+```
+
+---
 
 ### Build Results
 
 When the deployment completes, the following resources are created:
 
-- **Core Infrastructure:**  
-  - Fully serverless architecture—no EC2 instances, containers, or VPC networking required  
-  - Terraform-managed provisioning of API Gateway, Lambda, DynamoDB, and S3 resources  
-  - Stateless, request-driven design where each API call is handled independently  
+- **Resource Groups:**
+  - `notes-rg` — functions, Cosmos DB, and supporting resources
+  - `notes-webapp-rg` — static website storage account
 
-- **Security & IAM:**  
-  - IAM roles for Lambda execution with scoped permissions for DynamoDB and CloudWatch  
-  - Principle-of-least-privilege policies applied per Lambda function  
-  - No long-lived credentials embedded in application code  
+- **Azure Cosmos DB:**
+  - Account with Session consistency and GlobalDocumentDB kind
+  - Database `notes` with container `notes`
+  - Partition key `/owner` — all items use `"global"` in this demo
+  - Item ID is a UUID; Cosmos DB `id` field serves as the unique key within the partition
 
-- **Amazon DynamoDB Table:**  
-  - Single table storing notes keyed by `owner` (partition key) and `id` (sort key)  
-  - Each item stores `title`, `note`, `created_at`, and `updated_at` attributes  
-  - On-demand capacity mode for automatic scaling and cost efficiency  
+- **Azure Functions:**
+  - Linux consumption plan (`Y1` SKU) — serverless, pay-per-execution
+  - Python 3.11 runtime with Python v2 programming model
+  - Single `function_app.py` implementing all five routes with `@app.route` decorators
+  - CORS configured to allow all origins
+  - Cosmos DB endpoint and key injected via app settings
 
-- **AWS Lambda Functions:**  
-  - Multiple Python-based Lambda functions implementing Create, Read, Update, List, and Delete operations  
-  - Each function is independently deployed and mapped to a specific API route  
-  - Emits structured logs to CloudWatch for observability and debugging  
+- **Static Web App (Blob Storage):**
+  - Storage account with static website hosting enabled
+  - `index.html` uploaded to the `$web` container
+  - Frontend calls the Function App URL directly from the browser
 
-- **Amazon API Gateway:**  
-  - HTTP API exposing REST-style `/notes` and `/notes/{id}` endpoints  
-  - Routes requests to the appropriate Lambda function based on HTTP method and path  
-  - Provides secure, stateless HTTPS access for browser and CLI clients  
+- **Automation & Validation:**
+  - `apply.sh` / `destroy.sh` / `check_env.sh` automate provisioning, teardown, and validation
+  - `validate.sh` creates 5 notes, lists, gets, updates, and deletes each — all via curl
 
-- **Static Web Application (S3):**  
-  - S3 bucket configured for static website hosting  
-  - `index.html` provides a lightweight browser-based interface for managing notes  
-  - Frontend dynamically calls the deployed API Gateway endpoints  
+---
 
-- **Automation & Validation:**  
-  - `apply.sh`, `destroy.sh`, and `check_env.sh` scripts automate provisioning, teardown, and environment validation  
-  - `validate.sh` performs end-to-end API verification using curl and jq  
-  - Entire workflow runs using Terraform and AWS CLI—no manual AWS console setup required  
+## Project Structure
 
-Together, these resources form a **clean, minimal serverless CRUD application**
-that demonstrates modern AWS API design principles—simple, scalable, and fully
-managed from infrastructure to application code.
-
+```
+azure-crud-example/
+├── 01-functions/
+│   ├── code/
+│   │   ├── function_app.py    # All 5 Azure Functions (Python v2 model)
+│   │   ├── requirements.txt   # azure-functions, azure-cosmos
+│   │   └── host.json          # Extension bundle configuration
+│   ├── main.tf                # Provider, resource group, random suffix
+│   ├── cosmosdb.tf            # Cosmos DB account, database, container
+│   ├── functions.tf           # Storage, service plan, Function App, code deployment
+│   └── outputs.tf             # function_app_name, function_app_url, resource_group_name
+├── 02-webapp/
+│   ├── index.html.tmpl        # Frontend template (${API_BASE} substituted at deploy)
+│   ├── main.tf                # Provider, resource group
+│   └── storage.tf             # Storage account, static website, blob upload
+├── apply.sh                   # Full deployment orchestrator
+├── destroy.sh                 # Teardown in reverse order
+├── validate.sh                # End-to-end CRUD test
+└── check_env.sh               # Validates az, terraform, jq, and auth
+```

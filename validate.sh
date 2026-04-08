@@ -1,213 +1,100 @@
 #!/bin/bash
-# ===============================================================================
-# File: validate.sh
-# ===============================================================================
-# Purpose:
-#   Validate the Notes API by exercising all CRUD endpoints:
-#     - POST   /notes        (create notes)
-#     - GET    /notes        (list notes)
-#     - GET    /notes/{id}   (get note)
-#     - PUT    /notes/{id}   (update note)
-#     - DELETE /notes/{id}   (delete note)
-#
-# Requirements:
-#   - aws CLI
-#   - curl
-#   - jq
-#
-# Notes:
-#   - Assumes an HTTP API named "notes-api"
-#   - Owner is hardcoded to "global" in Lambda logic
-# ===============================================================================
-
 set -euo pipefail
-export AWS_DEFAULT_REGION="us-east-1"
 
-# ------------------------------------------------------------------------------
-# Step 1: Discover API Gateway endpoint
-# ------------------------------------------------------------------------------
-echo "NOTE: Locating API Gateway endpoint..."
+echo "NOTE: Running validation..."
 
-API_ID=$(aws apigatewayv2 get-apis \
-  --query "Items[?Name=='notes-api'].ApiId" \
-  --output text)
+cd 01-functions
+API_BASE=$(terraform output -raw function_app_url)
+cd ..
 
-if [[ -z "${API_ID}" || "${API_ID}" == "None" ]]; then
-  echo "ERROR: No API found with name 'notes-api'"
-  exit 1
-fi
+echo "NOTE: Testing API at: ${API_BASE}"
 
-API_BASE=$(aws apigatewayv2 get-api \
-  --api-id "${API_ID}" \
-  --query "ApiEndpoint" \
-  --output text)
+# ── Create ────────────────────────────────────────────────────────────────────
 
-echo "NOTE: API Gateway URL - ${API_BASE}"
-
-# ------------------------------------------------------------------------------
-# Step 2: Create 5 notes
-# ------------------------------------------------------------------------------
 echo "NOTE: Creating 5 test notes..."
-
 NOTE_IDS=()
 
 for i in {1..5}; do
-  PAYLOAD=$(jq -n \
-    --arg title "Test Note ${i}" \
-    --arg note "This is test note ${i}" \
-    '{ title: $title, note: $note }')
-
-  RESPONSE=$(curl -s -X POST "${API_BASE}/notes" \
+  PAYLOAD=$(jq -n --arg t "Test Note ${i}" --arg n "Content ${i}" '{title:$t,note:$n}')
+  ID=$(curl -sf -X POST "${API_BASE}/notes" \
     -H "Content-Type: application/json" \
-    -d "${PAYLOAD}")
+    -d "${PAYLOAD}" | jq -r '.id // empty')
 
-  NOTE_ID=$(echo "${RESPONSE}" | jq -r '.id // empty')
-
-  if [[ -z "${NOTE_ID}" ]]; then
+  if [[ -z "${ID}" ]]; then
     echo "ERROR: Failed to create note ${i}"
-    echo "RESPONSE: ${RESPONSE}"
     exit 1
   fi
 
-  NOTE_IDS+=("${NOTE_ID}")
-  echo "NOTE: Created note ${i} (id=${NOTE_ID})"
+  NOTE_IDS+=("${ID}")
+  echo "NOTE: Created note ${i} (id=${ID})"
 done
 
-# ------------------------------------------------------------------------------
-# Step 3: List notes
-# ------------------------------------------------------------------------------
+# ── List ──────────────────────────────────────────────────────────────────────
+
 echo "NOTE: Listing notes..."
+COUNT=$(curl -sf "${API_BASE}/notes" | jq '.items | length')
 
-LIST_RESPONSE=$(curl -s "${API_BASE}/notes")
-NOTE_COUNT=$(echo "${LIST_RESPONSE}" | jq '.items | length')
-
-if [[ "${NOTE_COUNT}" -lt 5 ]]; then
-  echo "ERROR: Expected at least 5 notes, got ${NOTE_COUNT}"
+if [[ "${COUNT}" -lt 5 ]]; then
+  echo "ERROR: Expected at least 5 notes, got ${COUNT}"
   exit 1
 fi
+echo "NOTE: List returned ${COUNT} notes — OK"
 
-echo "NOTE: List endpoint returned ${NOTE_COUNT} notes"
+# ── Get ───────────────────────────────────────────────────────────────────────
 
-# ------------------------------------------------------------------------------
-# Step 4: Get each note by ID
-# ------------------------------------------------------------------------------
-echo "NOTE: Fetching each created note..."
-
+echo "NOTE: Fetching each note by ID..."
 for ID in "${NOTE_IDS[@]}"; do
-  GET_RESPONSE=$(curl -s "${API_BASE}/notes/${ID}")
-  TITLE=$(echo "${GET_RESPONSE}" | jq -r '.title // empty')
-
+  TITLE=$(curl -sf "${API_BASE}/notes/${ID}" | jq -r '.title // empty')
   if [[ -z "${TITLE}" ]]; then
     echo "ERROR: Failed to fetch note ${ID}"
     exit 1
   fi
-
-  echo "NOTE: Retrieved note ${ID} (${TITLE})"
+  echo "NOTE: Get ${ID} (${TITLE}) — OK"
 done
 
-# ------------------------------------------------------------------------------
-# Step 5: Update each note
-# ------------------------------------------------------------------------------
+# ── Update ────────────────────────────────────────────────────────────────────
+
 echo "NOTE: Updating each note..."
-
 for ID in "${NOTE_IDS[@]}"; do
-  # Fetch existing note to preserve required fields
-  CURRENT=$(curl -s "${API_BASE}/notes/${ID}")
-
-  TITLE=$(echo "${CURRENT}" | jq -r '.title // empty')
-  NOTE=$(echo "${CURRENT}" | jq -r '.note // empty')
-
-  if [[ -z "${TITLE}" ]]; then
-    echo "ERROR: Failed to fetch existing note ${ID}"
-    exit 1
-  fi
-
-  UPDATE_PAYLOAD=$(jq -n \
-    --arg title "${TITLE}" \
-    --arg note  "Updated note for ${ID}" \
-    '{ title: $title, note: $note }')
-
-  UPDATE_RESPONSE=$(curl -s -X PUT "${API_BASE}/notes/${ID}" \
+  PAYLOAD=$(jq -n --arg t "Updated ${ID}" --arg n "Updated content" '{title:$t,note:$n}')
+  UPDATED=$(curl -sf -X PUT "${API_BASE}/notes/${ID}" \
     -H "Content-Type: application/json" \
-    -d "${UPDATE_PAYLOAD}")
+    -d "${PAYLOAD}" | jq -r '.title // empty')
 
-  UPDATED_TITLE=$(echo "${UPDATE_RESPONSE}" | jq -r '.title // empty')
-
-  if [[ -z "${UPDATED_TITLE}" ]]; then
+  if [[ -z "${UPDATED}" ]]; then
     echo "ERROR: Failed to update note ${ID}"
-    echo "RESPONSE: ${UPDATE_RESPONSE}"
     exit 1
   fi
-
-  echo "NOTE: Updated note ${ID}"
+  echo "NOTE: Update ${ID} — OK"
 done
 
-# ------------------------------------------------------------------------------
-# Step 6: Delete each note
-# ------------------------------------------------------------------------------
+# ── Delete ────────────────────────────────────────────────────────────────────
+
 echo "NOTE: Deleting each note..."
-
 for ID in "${NOTE_IDS[@]}"; do
-  curl -s -X DELETE "${API_BASE}/notes/${ID}" > /dev/null
-  echo "NOTE: Deleted note ${ID}"
+  MSG=$(curl -sf -X DELETE "${API_BASE}/notes/${ID}" | jq -r '.message // empty')
+  if [[ -z "${MSG}" ]]; then
+    echo "ERROR: Failed to delete note ${ID}"
+    exit 1
+  fi
+  echo "NOTE: Delete ${ID} — OK"
 done
 
-echo "NOTE: Notes API validation complete"
+# ── Confirm 404 ───────────────────────────────────────────────────────────────
 
-# ------------------------------------------------------------------------------
-# Step 7: Print out test web application URL.
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# SELECT WEB BUCKET BY PREFIX
-# ------------------------------------------------------------------------------
-# Finds the S3 bucket used for hosting the web client by matching a
-# known prefix. Exactly one bucket must match.
-# ------------------------------------------------------------------------------
-PREFIX="notes"
-
-read -r -a BUCKETS <<< "$(aws s3api list-buckets \
-  --query "Buckets[?starts_with(Name, \`${PREFIX}\`)].Name" \
-  --output text)"
-
-# ------------------------------------------------------------------------------
-# ENFORCE A SINGLE BUCKET MATCH
-# ------------------------------------------------------------------------------
-# Avoids deploying to the wrong bucket by requiring exactly one match.
-# ------------------------------------------------------------------------------
-if [[ "${#BUCKETS[@]}" -eq 0 ]]; then
-  echo "ERROR: No S3 bucket found starting with '${PREFIX}'" >&2
-  exit 1
-elif [[ "${#BUCKETS[@]}" -gt 1 ]]; then
-  echo "ERROR: Multiple S3 buckets found starting with '${PREFIX}':" >&2
-  for b in "${BUCKETS[@]}"; do
-    echo "  - ${b}" >&2
-  done
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${API_BASE}/notes/${NOTE_IDS[0]}")
+if [[ "${HTTP}" != "404" ]]; then
+  echo "ERROR: Expected 404 for deleted note, got ${HTTP}"
   exit 1
 fi
+echo "NOTE: Deleted note returns 404 — OK"
 
-BUCKET_NAME="${BUCKETS[0]}"
-echo "NOTE: Bucket name is ${BUCKET_NAME}"
+# ── Web app URL ───────────────────────────────────────────────────────────────
 
-# ------------------------------------------------------------------------------
-# DETERMINE BUCKET REGION
-# ------------------------------------------------------------------------------
-# S3 returns "None" for buckets in us-east-1. Normalize this to the
-# canonical region name so we can build a correct bucket URL.
-# ------------------------------------------------------------------------------
-REGION=$(aws s3api get-bucket-location \
-  --bucket "${BUCKET_NAME}" \
-  --query "LocationConstraint" \
-  --output text)
+cd 02-webapp
+WEBSITE_URL=$(terraform output -raw website_url 2>/dev/null || true)
+cd ..
 
-if [[ "${REGION}" == "None" ]]; then
-  REGION="us-east-1"
-fi
-
-# ------------------------------------------------------------------------------
-# BUILD REGION-AWARE BUCKET URL
-# ------------------------------------------------------------------------------
-# Used for redirect URIs (callback.html) and other hosted assets.
-# ------------------------------------------------------------------------------
-BUCKET_URL="https://${BUCKET_NAME}.s3.${REGION}.amazonaws.com"
-
-echo "NOTE: Test application URL - ${BUCKET_URL}/index.html"
+echo ""
+echo "NOTE: Validation complete."
+[ -n "${WEBSITE_URL:-}" ] && echo "NOTE: Web app: ${WEBSITE_URL}index.html"

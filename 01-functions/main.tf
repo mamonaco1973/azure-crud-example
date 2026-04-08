@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 }
 
@@ -19,7 +23,7 @@ resource "random_id" "suffix" {
   byte_length = 4
 }
 
-resource "azurerm_resource_group" "webapp" {
-  name     = "notes-webapp-rg"
+resource "azurerm_resource_group" "notes" {
+  name     = "notes-rg"
   location = "East US"
 }
