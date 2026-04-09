@@ -43,7 +43,7 @@ Azure Blob Storage. This is a port of `aws-crud-example` (Lambda + DynamoDB + S3
 | Partition key | `/owner` (hardcoded value: `"global"`) |
 | Item ID | UUID (string) |
 | Function runtime | Python 3.11 |
-| Service plan SKU | `Y1` (consumption) |
+| Service plan SKU | `B1` (Basic) |
 | Function auth level | `ANONYMOUS` |
 | API base path | `https://<func-app>.azurewebsites.net/api` |
 
