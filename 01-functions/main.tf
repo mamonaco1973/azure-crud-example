@@ -23,7 +23,13 @@ resource "random_id" "suffix" {
   byte_length = 4
 }
 
+variable "location" {
+  description = "Azure region for all resources"
+  type        = string
+  default     = "Central US"
+}
+
 resource "azurerm_resource_group" "notes" {
   name     = "notes-rg"
-  location = "Central US"
+  location = var.location
 }
