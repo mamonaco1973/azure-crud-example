@@ -19,6 +19,8 @@ resource "azurerm_storage_blob" "index" {
   source                 = "index.html"
   content_type           = "text/html"
   cache_control          = "no-store"
+
+  depends_on = [azurerm_storage_account_static_website.webapp]
 }
 
 output "website_url" {
