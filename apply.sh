@@ -32,10 +32,11 @@ FUNC_APP_NAME=$(az functionapp list \
   --query "[?starts_with(name, 'notes-func-')].name" \
   --output tsv)
 
-az functionapp deployment source config-zip \
+az functionapp deploy \
   --name "$FUNC_APP_NAME" \
   --resource-group "$RESOURCE_GROUP" \
-  --src app.zip \
+  --src-path app.zip \
+  --type zip \
   --build-remote true
 
 cd ../..
