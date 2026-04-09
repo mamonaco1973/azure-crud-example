@@ -39,8 +39,8 @@ def create_note(req: func.HttpRequest) -> func.HttpResponse:
 
     title = body.get("title", "").strip()
     note  = body.get("note",  "").strip()
-    if not title or not note:
-        return resp(400, {"error": "title and note are required"})
+    if not title:
+        return resp(400, {"error": "title is required"})
 
     now  = datetime.now(timezone.utc).isoformat()
     item = {
