@@ -11,16 +11,47 @@ cd 01-functions
 terraform init -upgrade
 terraform apply -auto-approve
 
-FUNC_APP_NAME=$(terraform output -raw function_app_name)
-API_BASE=$(terraform output -raw function_app_url)
+RESOURCE_GROUP=$(terraform output -raw resource_group_name)
 cd ..
+
+
+# ── Phase 2: Deploy function code ─────────────────────────────────────────────
+
+echo "NOTE: Packaging and deploying function code..."
+cd 01-functions/code
+
+rm -f app.zip
+zip -r app.zip . \
+  -x "*.git*" \
+  -x "*__pycache__*" \
+  -x "*.pytest_cache*" \
+  -x "*.DS_Store"
+
+FUNC_APP_NAME=$(az functionapp list \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "[?starts_with(name, 'notes-func-')].name" \
+  --output tsv)
+
+az functionapp deployment source config-zip \
+  --name "$FUNC_APP_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --src app.zip \
+  --build-remote true
+
+cd ../..
+
+API_BASE="https://$(az functionapp show \
+  --name "$FUNC_APP_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "properties.defaultHostName" \
+  -o tsv)/api"
 
 export API_BASE
 echo "NOTE: Function app: ${FUNC_APP_NAME}"
 echo "NOTE: API base:     ${API_BASE}"
 
 
-# ── Phase 2: Web app ──────────────────────────────────────────────────────────
+# ── Phase 3: Web app ──────────────────────────────────────────────────────────
 
 echo "NOTE: Building web app..."
 envsubst < 02-webapp/index.html.tmpl > 02-webapp/index.html

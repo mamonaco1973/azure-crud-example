@@ -21,5 +21,5 @@ resource "random_id" "suffix" {
 
 resource "azurerm_resource_group" "webapp" {
   name     = "notes-webapp-rg"
-  location = "East US"
+  location = "Central US"
 }

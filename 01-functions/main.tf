@@ -25,5 +25,5 @@ resource "random_id" "suffix" {
 
 resource "azurerm_resource_group" "notes" {
   name     = "notes-rg"
-  location = "East US"
+  location = "Central US"
 }
