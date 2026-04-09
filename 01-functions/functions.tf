@@ -72,20 +72,3 @@ resource "azurerm_function_app_flex_consumption" "notes" {
   }
 }
 
-data "archive_file" "function_code" {
-  type        = "zip"
-  source_dir  = "${path.module}/code"
-  output_path = "${path.module}/function_code.zip"
-}
-
-resource "null_resource" "deploy_code" {
-  depends_on = [azurerm_function_app_flex_consumption.notes]
-
-  triggers = {
-    code_hash = data.archive_file.function_code.output_sha256
-  }
-
-  provisioner "local-exec" {
-    command = "az functionapp deployment source config-zip --name ${azurerm_function_app_flex_consumption.notes.name} --resource-group ${azurerm_resource_group.notes.name} --src ${data.archive_file.function_code.output_path} --build-remote true"
-  }
-}
