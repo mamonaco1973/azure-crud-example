@@ -145,11 +145,6 @@ curl -s -X DELETE https://<func-app>.azurewebsites.net/api/notes/<id>
 * [Install Terraform](https://developer.hashicorp.com/terraform/install)
 * [Install jq](https://jqlang.github.io/jq/download/)
 
-Log in to Azure before deploying:
-```bash
-az login
-```
-
 ## Download this Repository
 
 ```bash
