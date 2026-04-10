@@ -97,3 +97,4 @@ cd ..
 
 echo ""
 [ -n "${WEBSITE_URL:-}" ] && echo "NOTE: Web app: ${WEBSITE_URL}index.html"
+echo ""
