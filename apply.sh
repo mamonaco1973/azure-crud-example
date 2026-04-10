@@ -54,7 +54,7 @@ echo "NOTE: API base:     ${API_BASE}"
 # ── Phase 3: Web app ──────────────────────────────────────────────────────────
 
 echo "NOTE: Building web app..."
-envsubst < 02-webapp/index.html.tmpl > 02-webapp/index.html
+envsubst '${API_BASE}' < 02-webapp/index.html.tmpl > 02-webapp/index.html
 
 cd 02-webapp
 terraform init -upgrade

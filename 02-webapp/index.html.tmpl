@@ -254,12 +254,11 @@
 
   // ===================== Helpers ====================
   async function api(path, method = "GET", body) {
-    const opts = { method };
-    if (body !== undefined) {
-      opts.headers = { "Content-Type": "application/json" };
-      opts.body = JSON.stringify(body);
-    }
-    const res = await fetch(API_BASE_URL + path, opts);
+    const res = await fetch(API_BASE_URL + path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined
+    });
 
     const text = await res.text();
     if (!res.ok) throw new Error(text || res.status);
