@@ -96,5 +96,4 @@ WEBSITE_URL=$(terraform output -raw website_url 2>/dev/null || true)
 cd ..
 
 echo ""
-echo "NOTE: Validation complete."
 [ -n "${WEBSITE_URL:-}" ] && echo "NOTE: Web app: ${WEBSITE_URL}index.html"
