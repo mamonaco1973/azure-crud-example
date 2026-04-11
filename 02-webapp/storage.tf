@@ -23,6 +23,18 @@ resource "azurerm_storage_blob" "index" {
   depends_on = [azurerm_storage_account_static_website.webapp]
 }
 
+resource "azurerm_storage_blob" "favicon" {
+  name                   = "favicon.ico"
+  storage_account_name   = azurerm_storage_account.webapp.name
+  storage_container_name = "$web"
+  type                   = "Block"
+  source                 = "favicon.ico"
+  content_type           = "image/x-icon"
+  cache_control          = "no-store"
+
+  depends_on = [azurerm_storage_account_static_website.webapp]
+}
+
 output "website_url" {
   value = azurerm_storage_account.webapp.primary_web_endpoint
 }
