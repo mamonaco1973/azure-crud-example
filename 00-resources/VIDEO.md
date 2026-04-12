@@ -1,6 +1,6 @@
 #Azure #Serverless #AzureFunctions #CosmosDB #Terraform #Python #CRUD
 
-*Build a Serverless CRUD API on Azure (Functions + Cosmos DB)*
+*Build a Serverless CRUD API on Azure (Function App + Cosmos DB)*
 
 Deploy a fully serverless notes API on Azure using Terraform, Azure Functions, and Cosmos DB. The backend runs on a Flex Consumption (FC1) Function App with Python, backed by a Cosmos DB SQL API database, with a static web frontend served directly from Blob Storage.
 

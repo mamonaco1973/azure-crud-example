@@ -30,7 +30,7 @@
 
 [ Highlight browser and storage account ]
 
-"The user opens a static web page — just an HTML file served directly from an Azure storage account."
+"The user opens a static web page — just an HTML page served directly from an Azure storage account."
 
 [ Highlight Function App ]
 
@@ -39,14 +39,6 @@
 [ Highlight Cosmos DB ]
 
 "The backend stores data in Cosmos DB. Each note is a JSON document. The Function App connects using the Cosmos DB endpoint."
-
-[ Highlight Flex Consumption plan ]
-
-"The Function App runs on the Flex Consumption plan — FC1. Pay per execution, scales to zero when idle."
-
-[ Full diagram ]
-
-"Two resource groups, one script to deploy. Let's build it."
 
 ---
 
@@ -78,50 +70,70 @@
 
 [ Azure Portal — Resource Groups ]
 
-"Two resource groups — one for the Function App and Cosmos DB, one for the web frontend."
+"Two resource groups are created — one for the Function App and Cosmos DB, and one for the web frontend."
 
-[ Azure Portal — Function App, Flex Consumption plan visible ]
+[ Azure Portal — Function App ]
 
-"Function App on FC1. Python 3.11. Cosmos DB connection settings in app settings."
+"First — the Function App. This is the entire compute layer for the project."
+
+[ Show Routes ]
+
+"These are the routes — create, list, get, update, and delete."
 
 [ Azure Portal — Cosmos DB container ]
 
-"Cosmos DB with a notes container. Partition key is owner."
+"Next — Cosmos DB. This is the storage layer for the API."
 
-[ Azure Portal — storage account, $web container ]
+[ Azure Portal — Storage Account, $web container ]
 
-"Static website enabled. index.html in the $web container, ready to serve."
+"Finally, a storage account hosts the static web application."
 
 [ Browser — Notes Demo loads ]
 
-"Open the URL. The app is live."
+"Open the URL to launch the test application."
 
 ---
 
 ## Demo
 
-[ Browser — Notes Demo, empty note list ]
+[ Browser — Notes Demo, open DevTools → Network tab ]
 
-"The app loads and calls the list endpoint. No notes yet."
+"Open the web app — and the browser debugger so we can watch the API calls."
+
+[ Refresh page — network calls visible ]
+
+"When the app loads, it calls the list endpoint. No notes yet."
 
 [ Clicking New — modal opens, typing a title, clicking Create ]
 
-"New note. Give it a title. Create it — POST /api/notes. ID comes back, list refreshes."
+"Now let’s create a new note by selecting New."
+
+[ Show API working ]
+
+"A POST to the API is made which returns an ID."
 
 [ Clicking the note in the list ]
 
-"Click it. GET /api/notes/{id}. Content loads into the editor."
+"The new note is also selected and the API loads the content."
 
 [ Editing and clicking Save ]
 
-"Edit and save. PUT /api/notes/{id}. Written back to Cosmos DB."
+"Now let’s update the note and select Save."
+
+[ Show network tab ]
+
+"A PUT call is made — and the updated data is stored in Cosmos DB."
 
 [ Clicking Delete ]
 
-"Delete. DELETE /api/notes/{id}. Gone."
+"Now let’s delete the note by selecting Delete.
+
+[ Show network ]
+
+"A DELETE call is made — and the note is removed."
 
 [ Browser — empty list ]
 
-"Create, read, update, delete — serverless on Azure. One script to deploy, one script to destroy."
+"In this demo, we’ve now exercised every API endpoint."
 
 ---
