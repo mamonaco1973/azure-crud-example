@@ -89,12 +89,14 @@ if [[ "${HTTP}" != "404" ]]; then
 fi
 echo "NOTE: Deleted note returns 404 — OK"
 
-# ── Web app URL ───────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
 
-cd 02-webapp
-WEBSITE_URL=$(terraform output -raw website_url 2>/dev/null || true)
-cd ..
+WEBSITE_URL=$(cd 02-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
 
 echo ""
-[ -n "${WEBSITE_URL:-}" ] && echo "NOTE: Web app: ${WEBSITE_URL}index.html"
-echo ""
+echo "================================================================================="
+echo "  Deployment validated!"
+echo "================================================================================="
+echo "  API : ${API_BASE}"
+echo "  Web : ${WEBSITE_URL}index.html"
+echo "================================================================================="
