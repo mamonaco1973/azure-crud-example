@@ -1,242 +1,113 @@
-# Azure Serverless CRUD API with Azure Functions, Cosmos DB, and Blob Storage
+# Serverless CRUD API on Azure: Functions and Cosmos DB
 
-This project delivers a fully automated **serverless CRUD (Create, Read, Update,
-Delete) API** on Azure, built using **Azure Functions**, **Azure Cosmos DB**, and
-**Azure Blob Storage**.
+A small serverless **notes** API with a browser front end. A **Flex
+Consumption Function App** serves five CRUD endpoints as Python HTTP
+functions, which store notes in **Cosmos DB**. A single-page web app, served
+from a **storage account static website**, calls the API from the browser.
 
-It uses **Terraform** and **Python (azure-cosmos)** to provision and deploy a
-**stateless, REST-style backend** that exposes HTTP endpoints for managing simple
-"notes" data — all without running or managing any virtual machines.
+![Notes web app](webapp.png)
 
-For testing and demonstration purposes, a lightweight **HTML web frontend**
-interacts directly with the deployed API, allowing users to create, view, update,
-and delete notes from a browser.
+| Piece | Where | Role |
+|---|---|---|
+| **notes-func-&lt;hex&gt;** | `notes-rg`, Central US | Function App on the `FC1` plan (`notes-plan`), Python 3.11, up to 50 instances of 2 GB; five anonymous HTTP functions in `function_app.py`; CORS allows any origin |
+| **notesfunc&lt;hex&gt;** | `notes-rg` | storage for the deployment package |
+| **notes-ai** | `notes-rg` | Application Insights |
+| **notes-cosmos-&lt;hex&gt;** | `notes-rg` | Cosmos DB (SQL API), session consistency; database and container `notes`, partitioned on `/owner`, 400 RU/s |
+| **notesweb&lt;hex&gt;** | `notes-webapp-rg` | storage static website (`$web`) holding `index.html` and `favicon.ico` |
 
-![webapp](webapp.png)
+## Architecture
 
-This design follows a **serverless microservice architecture** where Azure
-Functions handle HTTP routing and business logic, Cosmos DB provides fully
-managed NoSQL persistence, and Blob Storage hosts the static frontend.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.svg">
+  <img alt="A browser loads index.html from the notesweb storage account's static website, then calls notes-func, a Flex Consumption Function App whose five anonymous Python 3.11 HTTP functions serve /api/notes and /api/notes/{id} with CORS open to any origin. The functions read and write the notes container in Cosmos DB, partitioned on /owner, using the account key from an app setting, and send telemetry to Application Insights." src="architecture-light.svg">
+</picture>
 
-![diagram](azure-crud-example.png)
+Regenerate with `python3 make_diagram.py`.
 
-Key capabilities demonstrated:
+- **`01-functions/`**: `main.tf` (providers, `notes-rg`), `functions.tf`
+  (storage, plan, Application Insights, Function App), `cosmosdb.tf`, and
+  the code in `code/function_app.py`.
+- **`02-webapp/`**: the static website storage account in its own resource
+  group, and `index.html.tmpl`, which `apply.sh` fills in with the API URL.
 
-1. **Serverless CRUD API** — Implements REST-style endpoints using the Azure
-   Functions Python v2 programming model for creating, retrieving, listing,
-   updating, and deleting records.
-2. **Stateless Compute Layer** — All five operations are handled by a single
-   Function App on a consumption plan — zero idle cost, scales on demand.
-3. **Managed NoSQL Storage** — Uses Cosmos DB (SQL API) with a provisioned
-   throughput container, partition key `/owner`, and UUID-based item IDs.
-4. **Infrastructure as Code (IaC)** — Terraform provisions the Function App,
-   Cosmos DB account, Blob Storage static site, and all supporting resources
-   in a repeatable, auditable way.
-5. **Browser-Based Test Client** — A simple static HTML frontend demonstrates
-   real-time interaction with the API without requiring additional tooling.
+## API
 
----
+Routes are under the default `/api` prefix. There's no authentication. Every
+note belongs to the hardcoded owner `"global"`, the container's partition
+key, so listing is a single-partition query.
 
-## API Endpoints
+| Method | Path | Function | Returns |
+|---|---|---|---|
+| POST | `/api/notes` | `create_note` | `201` `{id, title, note}`; `400` if `title` is missing |
+| GET | `/api/notes` | `list_notes` | `{"items": [...]}` |
+| GET | `/api/notes/{id}` | `get_note` | the note, or `404` |
+| PUT | `/api/notes/{id}` | `update_note` | the updated note; `404` if it doesn't exist; omitted fields keep their values |
+| DELETE | `/api/notes/{id}` | `delete_note` | `{"message": "Note deleted"}`, even if the note didn't exist |
 
-The **Notes API** exposes REST-style CRUD endpoints through **Azure Functions
-HTTP triggers**. All endpoints return JSON and accept both CLI and browser-based
-clients.
+Each note gets a UUID `id` and `created_at` / `updated_at` timestamps.
 
-> Note: In this simplified demo, the note `owner` is hardcoded to `"global"` in
-> the function code.
-
-### Endpoint Summary
-
-| Method | Path | Purpose | Input | Cosmos DB Operation |
-|---|---|---|---|---|
-| POST | `/api/notes` | Create a new note | JSON body (`title`, `note`) | `create_item` |
-| GET | `/api/notes` | List all notes | None | `query_items` (owner = "global") |
-| GET | `/api/notes/{id}` | Retrieve a single note | Path param (`id`) | `read_item` |
-| PUT | `/api/notes/{id}` | Update an existing note | Path param + JSON body | `replace_item` |
-| DELETE | `/api/notes/{id}` | Delete a note | Path param (`id`) | `delete_item` |
-
-### Request & Response Characteristics
-
-| Aspect | Behavior |
-|---|---|
-| Authentication | None (demo-only, `AuthLevel.ANONYMOUS`) |
-| Content Type | `application/json` |
-| Owner Model | Hardcoded to `"global"` |
-| Response Format | JSON |
-| Clients | curl, browser, any HTTP client |
-| Error Handling | Standard HTTP status codes |
-
----
-
-### POST /api/notes
-
-**Request Body:**
-```json
-{ "title": "Test Note 1", "note": "This is test note 1" }
-```
-
-**Response (201):**
-```json
-{
-  "id": "2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21",
-  "title": "Test Note 1",
-  "note": "This is test note 1"
-}
-```
-
-**Example:**
 ```bash
-curl -s -X POST https://<func-app>.azurewebsites.net/api/notes \
+curl -s -X POST https://notes-func-<hex>.azurewebsites.net/api/notes \
   -H "Content-Type: application/json" \
   -d '{"title":"Test Note 1","note":"This is test note 1"}'
 ```
 
----
-
-### GET /api/notes
-
-**Response (200):**
-```json
-{
-  "items": [
-    {
-      "id": "2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21",
-      "title": "Test Note 1",
-      "note": "This is test note 1",
-      "created_at": "2026-01-19T14:12:09.123456+00:00",
-      "updated_at": "2026-01-19T14:12:09.123456+00:00"
-    }
-  ]
-}
-```
-
----
-
-### GET /api/notes/{id}
-
-```bash
-curl -s https://<func-app>.azurewebsites.net/api/notes/<id>
-```
-
----
-
-### PUT /api/notes/{id}
-
-**Request Body:**
-```json
-{ "title": "Updated Title", "note": "Updated content" }
-```
-
----
-
-### DELETE /api/notes/{id}
-
-```bash
-curl -s -X DELETE https://<func-app>.azurewebsites.net/api/notes/<id>
-```
-
----
-
 ## Prerequisites
 
 * [An Azure Account](https://portal.azure.com/)
-* [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
+* [Install AZ CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 * [Install Terraform](https://developer.hashicorp.com/terraform/install)
-* [Install jq](https://jqlang.github.io/jq/download/)
+* [Install jq](https://jqlang.github.io/jq/download/), `zip` and `envsubst`
 
-## Download this Repository
+`check_env.sh` expects a service principal in `ARM_CLIENT_ID`,
+`ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID` and `ARM_TENANT_ID`. If this is
+your first time following along, we recommend starting with this video:
+[Azure + Terraform: Easy Setup](https://youtu.be/wwi3kVgYNOk).
+
+## Deploy
 
 ```bash
 git clone https://github.com/mamonaco1973/azure-crud-example.git
 cd azure-crud-example
+./apply.sh
 ```
 
-## Build the Code
+`apply.sh` applies `01-functions`, zips `01-functions/code` and deploys it
+with `az functionapp deployment source config-zip --build-remote true`,
+renders `02-webapp/index.html` from the template with `envsubst`, and applies
+`02-webapp`. It ends by running `validate.sh`, which creates five notes,
+lists them, fetches, updates and deletes each one, and checks that a deleted
+note returns `404`:
 
-Run [check_env.sh](check_env.sh) to validate your environment, then run
-[apply.sh](apply.sh) to provision all infrastructure and deploy the function code.
+```
+NOTE: Created note 1 (id=2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21)
+...
+NOTE: List returned 5 notes — OK
+...
+NOTE: Deleted note returns 404 — OK
 
-```bash
-~/azure-crud-example$ ./apply.sh
-NOTE: Found required command: az
-NOTE: Found required command: terraform
-NOTE: Found required command: jq
-NOTE: Azure CLI authentication successful.
-NOTE: Deploying functions and Cosmos DB...
-
-Initializing the backend...
+=================================================================================
+  Deployment validated!
+=================================================================================
+  API : https://notes-func-<hex>.azurewebsites.net/api
+  Web : https://notesweb<hex>.z19.web.core.windows.net/index.html
+=================================================================================
 ```
 
-`apply.sh` performs the following steps in order:
+## Try it
 
-1. Runs `check_env.sh` to validate required CLI tools and Azure authentication
-2. Deploys `01-functions` — resource group, Cosmos DB account/database/container,
-   storage account, service plan, and Function App
-3. Packages and deploys the Python function code via `az functionapp deployment source config-zip`
-4. Substitutes the Function App URL into `02-webapp/index.html.tmpl`
-5. Deploys `02-webapp` — storage account with static website hosting, uploads `index.html`
-6. Runs `validate.sh` to exercise all five CRUD endpoints
+1. Open the **Web** URL and add, edit and delete notes in the page.
+2. Or use `curl` against the **API** URL with the routes above.
 
-To tear down all resources:
+## Teardown
 
 ```bash
 ./destroy.sh
 ```
 
----
+## Notes
 
-### Build Results
-
-When the deployment completes, the following resources are created:
-
-- **Resource Groups:**
-  - `notes-rg` — functions, Cosmos DB, and supporting resources
-  - `notes-webapp-rg` — static website storage account
-
-- **Azure Cosmos DB:**
-  - Account with Session consistency and GlobalDocumentDB kind
-  - Database `notes` with container `notes`
-  - Partition key `/owner` — all items use `"global"` in this demo
-  - Item ID is a UUID; Cosmos DB `id` field serves as the unique key within the partition
-
-- **Azure Functions:**
-  - Linux consumption plan (`Y1` SKU) — serverless, pay-per-execution
-  - Python 3.11 runtime with Python v2 programming model
-  - Single `function_app.py` implementing all five routes with `@app.route` decorators
-  - CORS configured to allow all origins
-  - Cosmos DB endpoint and key injected via app settings
-
-- **Static Web App (Blob Storage):**
-  - Storage account with static website hosting enabled
-  - `index.html` uploaded to the `$web` container
-  - Frontend calls the Function App URL directly from the browser
-
-- **Automation & Validation:**
-  - `apply.sh` / `destroy.sh` / `check_env.sh` automate provisioning, teardown, and validation
-  - `validate.sh` creates 5 notes, lists, gets, updates, and deletes each — all via curl
-
----
-
-## Project Structure
-
-```
-azure-crud-example/
-├── 01-functions/
-│   ├── code/
-│   │   ├── function_app.py    # All 5 Azure Functions (Python v2 model)
-│   │   ├── requirements.txt   # azure-functions, azure-cosmos
-│   │   └── host.json          # Extension bundle configuration
-│   ├── main.tf                # Provider, resource group, random suffix
-│   ├── cosmosdb.tf            # Cosmos DB account, database, container
-│   ├── functions.tf           # Storage, service plan, Function App, code deployment
-│   └── outputs.tf             # function_app_name, function_app_url, resource_group_name
-├── 02-webapp/
-│   ├── index.html.tmpl        # Frontend template (${API_BASE} substituted at deploy)
-│   ├── main.tf                # Provider, resource group
-│   └── storage.tf             # Storage account, static website, blob upload
-├── apply.sh                   # Full deployment orchestrator
-├── destroy.sh                 # Teardown in reverse order
-├── validate.sh                # End-to-end CRUD test
-└── check_env.sh               # Validates az, terraform, jq, and auth
-```
+- **Lab only.** The functions are anonymous with CORS open to any origin,
+  and the Cosmos DB primary key is stored in a plain app setting
+  (`COSMOS_KEY`) rather than using a managed identity.
+- `check_env.sh` doesn't check for `envsubst`, which `apply.sh` needs.
